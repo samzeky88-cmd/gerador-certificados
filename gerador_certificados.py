@@ -6,57 +6,71 @@ import io
 st.set_page_config(page_title="Gerador de Certificados — Coordenadores", layout="wide")
 st.title("📜 Gerador de Certificados — Coordenadores")
 
+# ✅ Mensagem bíblica
+st.markdown(
+    "<div style='text-align: center; font-size: 18px; color: #1a4d80; font-style: italic; margin: 10px 0 25px 0;'>"
+    "Consagre seus planos ao Senhor e eles serão bem-sucedidos ✨"
+    "</div>",
+    unsafe_allow_html=True
+)
+
 # --- 1. Carregar a planilha ---
 arquivo_excel = st.file_uploader("📂 Escolha a planilha (.xlsx)", type=["xlsx"])
 
 if arquivo_excel:
-    # Leitura com motor openpyxl
     df = pd.read_excel(arquivo_excel, sheet_name="CORDENADORES", engine="openpyxl")
-    
-    # Limpar nomes das colunas
     df.columns = df.columns.str.strip()
     
-    # Lista de nomes únicos ordenada
     nomes = sorted(df["NOME"].dropna().unique())
     nome_escolhido = st.selectbox("👤 Selecione o nome do coordenador", nomes)
 
     if nome_escolhido:
-        # Filtrar dados da pessoa selecionada
         dados_pessoa = df[df["NOME"] == nome_escolhido].reset_index(drop=True)
-        
-        # Preparar dicionário para o modelo
         contexto = {"NOME": nome_escolhido}
         
-        # Preencher do 1º ao 11º treinamento
+        # ✅ Preencher do 1º ao 11º — formatado com H e sem 0.0
         for i in range(11):
             if i < len(dados_pessoa):
                 linha = dados_pessoa.iloc[i]
-                # Formatar data corretamente
+                # Data formatada
                 data_val = linha["DATA"]
                 if hasattr(data_val, 'strftime'):
                     contexto[f"DATA_{i+1}"] = data_val.strftime("%d/%m/%Y")
                 else:
                     contexto[f"DATA_{i+1}"] = str(data_val)
-                # Demais campos
+                # Tema
                 contexto[f"TEMA_{i+1}"] = str(linha["TEMA"])
-                contexto[f"CH_{i+1}"] = float(linha["CH"])
+                # Carga horária formatada: 2H, 4H...
+                ch_valor = float(linha["CH"])
+                if ch_valor.is_integer():
+                    contexto[f"CH_{i+1}"] = f"{int(ch_valor)}H"
+                else:
+                    contexto[f"CH_{i+1}"] = f"{ch_valor}H"
             else:
-                # Deixar em branco se não houver mais treinamentos
+                # Sem dados → deixar em branco
                 contexto[f"DATA_{i+1}"] = ""
                 contexto[f"TEMA_{i+1}"] = ""
-                contexto[f"CH_{i+1}"] = 0.0
+                contexto[f"CH_{i+1}"] = ""
         
-        # Calcular carga horária total
-        ch_total = sum(contexto[f"CH_{i+1}"] for i in range(11))
-        contexto["CARGA_TOTAL"] = ch_total
+        # ✅ Cálculo da carga total também formatado
+        ch_total = 0.0
+        for i in range(11):
+            ch_texto = contexto[f"CH_{i+1}"]
+            if ch_texto:
+                ch_total += float(ch_texto.replace("H", ""))
+        
+        if ch_total.is_integer():
+            contexto["CARGA_TOTAL"] = f"{int(ch_total)}H"
+        else:
+            contexto["CARGA_TOTAL"] = f"{ch_total}H"
 
-        # Exibir resumo na tela
+        # Resumo na tela
         st.subheader("📋 Resumo do participante")
         st.write(f"**Nome:** {nome_escolhido}")
         st.write(f"**Quantidade de treinamentos:** {len(dados_pessoa)}")
-        st.write(f"**Carga Horária Total:** {ch_total} horas")
+        st.write(f"**Carga Horária Total:** {contexto['CARGA_TOTAL']}")
 
-        # --- 2. Carregar modelo do certificado ---
+        # --- 2. Carregar modelo ---
         st.subheader("📄 Modelo do certificado (.docx)")
         modelo = st.file_uploader("Escolha o modelo do certificado", type=["docx"])
 
@@ -64,7 +78,6 @@ if arquivo_excel:
             doc = DocxTemplate(modelo)
             doc.render(contexto)
             
-            # Preparar para download
             saida = io.BytesIO()
             doc.save(saida)
             saida.seek(0)
