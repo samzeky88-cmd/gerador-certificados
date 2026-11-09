@@ -6,7 +6,7 @@ import io
 st.set_page_config(page_title="Gerador de Certificados — Coordenadores", layout="wide")
 st.title("📜 Gerador de Certificados — Coordenadores")
 
-# ✅ Mensagem bíblica
+# Mensagem bíblica
 st.markdown(
     "<div style='text-align: center; font-size: 18px; color: #1a4d80; font-style: italic; margin: 10px 0 25px 0;'>"
     "Consagre seus planos ao Senhor e eles serão bem-sucedidos ✨"
@@ -28,34 +28,34 @@ if arquivo_excel:
         dados_pessoa = df[df["NOME"] == nome_escolhido].reset_index(drop=True)
         contexto = {"NOME": nome_escolhido}
         
-        # ✅ Preencher do 1º ao 11º — formatado com H e sem 0.0
+        # Preencher do 1º ao 11º — com os nomes do seu modelo!
         for i in range(11):
             if i < len(dados_pessoa):
                 linha = dados_pessoa.iloc[i]
-                # Data formatada
+                # Data
                 data_val = linha["DATA"]
                 if hasattr(data_val, 'strftime'):
-                    contexto[f"DATA_{i+1}"] = data_val.strftime("%d/%m/%Y")
+                    contexto[f"Data_{i+1}"] = data_val.strftime("%d/%m/%Y")
                 else:
-                    contexto[f"DATA_{i+1}"] = str(data_val)
+                    contexto[f"Data_{i+1}"] = str(data_val)
                 # Tema
-                contexto[f"TEMA_{i+1}"] = str(linha["TEMA"])
-                # Carga horária formatada: 2H, 4H...
+                contexto[f"Tema_{i+1}"] = str(linha["TEMA"])
+                # Carga horária formatada com H
                 ch_valor = float(linha["CH"])
                 if ch_valor.is_integer():
-                    contexto[f"CH_{i+1}"] = f"{int(ch_valor)}H"
+                    contexto[f"Ch_{i+1}"] = f"{int(ch_valor)}H"
                 else:
-                    contexto[f"CH_{i+1}"] = f"{ch_valor}H"
+                    contexto[f"Ch_{i+1}"] = f"{ch_valor}H"
             else:
-                # Sem dados → deixar em branco
-                contexto[f"DATA_{i+1}"] = ""
-                contexto[f"TEMA_{i+1}"] = ""
-                contexto[f"CH_{i+1}"] = ""
+                # Linhas sem dados → vazias
+                contexto[f"Data_{i+1}"] = ""
+                contexto[f"Tema_{i+1}"] = ""
+                contexto[f"Ch_{i+1}"] = ""
         
-        # ✅ Cálculo da carga total também formatado
+        # Cálculo da carga total
         ch_total = 0.0
         for i in range(11):
-            ch_texto = contexto[f"CH_{i+1}"]
+            ch_texto = contexto[f"Ch_{i+1}"]
             if ch_texto:
                 ch_total += float(ch_texto.replace("H", ""))
         
