@@ -3,6 +3,7 @@ import pandas as pd
 from docxtpl import DocxTemplate
 import io
 import re
+import unicodedata
 
 st.set_page_config(page_title="Sistema de Certificados — Coordenadores", layout="wide")
 
@@ -62,6 +63,12 @@ def corrigir_texto(texto):
     
     return texto_corrigido
 
+# 📌 Função para remover acentos e ordenar corretamente
+def remover_acentos(texto):
+    if not isinstance(texto, str):
+        texto = str(texto)
+    return unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode('ASCII').lower()
+
 
 # --- ABAS DO SISTEMA ---
 aba_certificados, aba_ranking = st.tabs(["📜 Gerar Certificados", "📊 Ranking de Participação"])
@@ -85,8 +92,8 @@ with aba_certificados:
         df = pd.read_excel(arquivo_excel, sheet_name="CORDENADORES", engine="openpyxl")
         df.columns = df.columns.str.strip()
         
-        # ✅ ORDEM ALFABÉTICA AUTOMÁTICA
-        nomes = sorted(df["NOME"].dropna().unique())
+        # ✅ ORDENAÇÃO ALFABÉTICA CORRIGIDA — ignora acentos e maiúsculas/minúsculas
+        nomes = sorted(df["NOME"].dropna().unique(), key=remover_acentos)
         nome_escolhido = st.selectbox("👤 Selecione o nome do coordenador", nomes, key="cert_nome")
 
         if nome_escolhido:
