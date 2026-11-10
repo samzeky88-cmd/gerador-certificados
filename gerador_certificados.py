@@ -5,11 +5,14 @@ import io
 
 st.set_page_config(page_title="Sistema de Certificados — Coordenadores", layout="wide")
 
+# Quantidade máxima de treinamentos
+MAX_TREINAMENTOS = 14  # ✅ Agora vai até 14!
+
 # --- MENU DE ABAS ---
 aba_certificados, aba_ranking = st.tabs(["📜 Gerar Certificados", "📊 Ranking de Participação"])
 
 # ==================================================
-# ABA 1 — GERAR CERTIFICADOS
+# ABA 1 — GERAR CERTIFICADOS (até 14 treinamentos)
 # ==================================================
 with aba_certificados:
     st.title("📜 Gerador de Certificados — Coordenadores")
@@ -34,28 +37,33 @@ with aba_certificados:
             dados_pessoa = df[df["NOME"] == nome_escolhido].reset_index(drop=True)
             contexto = {"NOME": nome_escolhido}
             
-            for i in range(11):
+            # ✅ Agora do 1º ao 14º!
+            for i in range(MAX_TREINAMENTOS):
                 if i < len(dados_pessoa):
                     linha = dados_pessoa.iloc[i]
+                    # Data
                     data_val = linha["DATA"]
                     if hasattr(data_val, 'strftime'):
                         contexto[f"Data_{i+1}"] = data_val.strftime("%d/%m/%Y")
                     else:
                         contexto[f"Data_{i+1}"] = str(data_val)
+                    # Tema
                     contexto[f"Tema_{i+1}"] = str(linha["TEMA"])
+                    # Carga horária formatada
                     ch_valor = float(linha["CH"])
-                    # Formatar bonito
                     if ch_valor.is_integer():
                         contexto[f"Ch_{i+1}"] = f"{int(ch_valor)}H"
                     else:
                         contexto[f"Ch_{i+1}"] = f"{ch_valor:.2f}H".rstrip('0').rstrip('.') + 'H'
                 else:
+                    # Sem dados → fica em branco
                     contexto[f"Data_{i+1}"] = ""
                     contexto[f"Tema_{i+1}"] = ""
                     contexto[f"Ch_{i+1}"] = ""
             
+            # Cálculo da carga total
             ch_total = 0.0
-            for i in range(11):
+            for i in range(MAX_TREINAMENTOS):
                 ch_texto = contexto[f"Ch_{i+1}"]
                 if ch_texto:
                     ch_total += float(ch_texto.replace("H", ""))
@@ -91,7 +99,7 @@ with aba_certificados:
                 )
 
 # ==================================================
-# ABA 2 — RANKING COM FORMATAÇÃO BONITA E TOP 10
+# ABA 2 — RANKING + Top 10
 # ==================================================
 with aba_ranking:
     st.title("📊 Ranking de Participação nos Treinamentos")
@@ -114,7 +122,7 @@ with aba_ranking:
         
         ranking.insert(0, "POSIÇÃO", range(1, len(ranking) + 1))
         
-        # ✅ Formatar carga horária bonita: 30H, 28.5H... sem números longos
+        # Formatar carga horária bonita
         def formatar_ch(valor):
             if valor.is_integer():
                 return f"{int(valor)}H"
@@ -129,9 +137,9 @@ with aba_ranking:
         st.write(f"**Total de participantes:** {len(ranking)}")
         st.write(f"**Total de treinamentos realizados:** {ranking['QUANTIDADE_TREINAMENTOS'].sum()}")
         
-        # ✅ Top 10 no lugar de Top 3!
+        # Top 10
         st.subheader("🏆 Destaques — Top 10")
-        emojis = ["🥇", "🥈", "🥉"] + ["🏅"] * 7  # 3 medalhas + 7 menções
+        emojis = ["🥇", "🥈", "🥉"] + ["🏅"] * 7
         for pos in range(min(10, len(ranking))):
             emoji = emojis[pos]
             linha = ranking.iloc[pos]
