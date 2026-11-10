@@ -9,17 +9,14 @@ st.set_page_config(page_title="Sistema de Certificados — Coordenadores", layou
 MAX_TREINAMENTOS = 14
 
 # ==================================================
-# 🧠 FUNÇÃO DE CORREÇÃO AUTOMÁTICA
+# 🧠 FUNÇÃO DE CORREÇÃO AUTOMÁTICA DE TEXTO
 # ==================================================
 def corrigir_texto(texto):
-    """Corrige maiúsculas indevidas, espaços e pontuação automaticamente"""
     if not isinstance(texto, str) or texto.strip() == "":
         return texto
     
-    # Remove espaços duplicados e nas pontas
     texto = re.sub(r'\s+', ' ', texto).strip()
     
-    # Lista de palavras que SEMPRE iniciam com maiúscula
     palavras_maiuscula = {
         "protocolo", "protocolos", "gestão", "qualidade", "saúde", "segurança",
         "higiene", "hospital", "unidade", "município", "estado", "brasil",
@@ -31,7 +28,6 @@ def corrigir_texto(texto):
         "sistema", "norma", "regulamento", "diretriz", "política", "estratégia"
     }
     
-    # Lista de palavras que SEMPRE ficam minúsculas no meio da frase
     palavras_minusculas = {
         "a", "o", "e", "de", "da", "do", "das", "dos", "em", "para", "com",
         "sem", "sob", "entre", "por", "pelo", "pela", "nos", "no", "na",
@@ -39,7 +35,6 @@ def corrigir_texto(texto):
         "aos", "às", "é", "e", "mas", "porém", "contudo", "então", "logo"
     }
     
-    # Divide em frases e processa cada uma
     frases = re.split(r'([.!?])', texto)
     texto_corrigido = ""
     
@@ -49,19 +44,16 @@ def corrigir_texto(texto):
             continue
         pontuacao = frases[i+1] if i+1 < len(frases) else ""
         
-        # Divide em palavras
         palavras = frase.split()
         frase_corrigida = []
         
         for idx, palavra in enumerate(palavras):
             p_min = palavra.lower()
-            # Primeira palavra da frase ou palavra da lista de maiúsculas
             if idx == 0 or p_min in palavras_maiuscula:
                 palavra_corrigida = p_min.capitalize()
             elif p_min in palavras_minusculas:
                 palavra_corrigida = p_min
             else:
-                # Outras palavras: primeira letra maiúscula, resto minúscula
                 palavra_corrigida = p_min.capitalize()
             
             frase_corrigida.append(palavra_corrigida)
@@ -71,7 +63,7 @@ def corrigir_texto(texto):
     return texto_corrigido
 
 
-# --- MENU DE ABAS ---
+# --- ABAS DO SISTEMA ---
 aba_certificados, aba_ranking = st.tabs(["📜 Gerar Certificados", "📊 Ranking de Participação"])
 
 # ==================================================
@@ -93,6 +85,7 @@ with aba_certificados:
         df = pd.read_excel(arquivo_excel, sheet_name="CORDENADORES", engine="openpyxl")
         df.columns = df.columns.str.strip()
         
+        # ✅ ORDEM ALFABÉTICA AUTOMÁTICA
         nomes = sorted(df["NOME"].dropna().unique())
         nome_escolhido = st.selectbox("👤 Selecione o nome do coordenador", nomes, key="cert_nome")
 
@@ -104,18 +97,15 @@ with aba_certificados:
                 if i < len(dados_pessoa):
                     linha = dados_pessoa.iloc[i]
                     
-                    # Data
                     data_val = linha["DATA"]
                     if hasattr(data_val, 'strftime'):
                         contexto[f"Data_{i+1}"] = data_val.strftime("%d/%m/%Y")
                     else:
                         contexto[f"Data_{i+1}"] = str(data_val)
                     
-                    # ✅ TEMA CORRIGIDO AUTOMATICAMENTE
                     tema_bruto = str(linha["TEMA"])
                     contexto[f"Tema_{i+1}"] = corrigir_texto(tema_bruto)
                     
-                    # Carga horária formatada
                     ch_valor = float(linha["CH"])
                     if ch_valor.is_integer():
                         contexto[f"Ch_{i+1}"] = f"{int(ch_valor)}H"
@@ -126,7 +116,6 @@ with aba_certificados:
                     contexto[f"Tema_{i+1}"] = ""
                     contexto[f"Ch_{i+1}"] = ""
             
-            # Cálculo da carga total
             ch_total = 0.0
             for i in range(MAX_TREINAMENTOS):
                 ch_texto = contexto[f"Ch_{i+1}"]
@@ -143,7 +132,6 @@ with aba_certificados:
             st.write(f"**Quantidade de treinamentos:** {len(dados_pessoa)}")
             st.write(f"**Carga Horária Total:** {contexto['CARGA_TOTAL']}")
             
-            # Prévia da correção
             with st.expander("🔍 Ver temas corrigidos"):
                 for i in range(MAX_TREINAMENTOS):
                     tema = contexto[f"Tema_{i+1}"]
@@ -161,7 +149,7 @@ with aba_certificados:
                 doc.save(saida)
                 saida.seek(0)
                 
-                st.success("✅ Certificado gerado com correção automática aplicada!")
+                st.success("✅ Certificado gerado com sucesso!")
                 st.download_button(
                     label="📥 Baixar Certificado",
                     data=saida,
@@ -171,7 +159,7 @@ with aba_certificados:
                 )
 
 # ==================================================
-# ABA 2 — RANKING
+# ABA 2 — RANKING DE PARTICIPAÇÃO
 # ==================================================
 with aba_ranking:
     st.title("📊 Ranking de Participação nos Treinamentos")
