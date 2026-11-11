@@ -227,7 +227,7 @@ with aba_ranking:
             st.write(f"{emoji} **{linha['POSIÇÃO']}º Lugar:** {linha['NOME']} — {linha['QUANTIDADE_TREINAMENTOS']} treinamentos | {linha['CARGA_HORARIA_TOTAL']}")
 
 # ==================================================
-# ABA 3 — CONTROLE DE IMPRESSÃO
+# ABA 3 — CONTROLE DE IMPRESSÃO (COM ORDEM ALFABÉTICA CORRIGIDA)
 # ==================================================
 with aba_controle:
     st.title("✅ Controle de Impressão de Certificados")
@@ -271,8 +271,10 @@ with aba_controle:
             resumo_pessoas["STATUS"] = "⬜ PENDENTE"
             impressos = []
         
+        # ✅ ORDENAÇÃO ALFABÉTICA GARANTIDA — A a Z, ignorando acentos
         resumo_pessoas["chave_ordem"] = resumo_pessoas["NOME"].apply(remover_acentos)
-        resumo_pessoas = resumo_pessoas.sort_values(by="chave_ordem").drop(columns=["chave_ordem"])
+        resumo_pessoas = resumo_pessoas.sort_values(by="chave_ordem", ascending=True)
+        resumo_pessoas = resumo_pessoas.drop(columns=["chave_ordem"])
         
         def formatar_ch_ctrl(valor):
             if pd.isna(valor):
@@ -309,5 +311,5 @@ with aba_controle:
         - ✅ IMPRESSO = Já foi emitido
         - ⬜ PENDENTE = Ainda precisa ser emitido
         
-        💡 O código agrupa nomes mesmo com pequenas diferenças de escrita!
+        ✅ Nomes em ordem alfabética de A a Z!
         """)
