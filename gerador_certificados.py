@@ -48,7 +48,7 @@ def corrigir_texto(texto):
     }
     
     frases = re.split(r'([.!?])', texto)
-    texto_corrigido = ""
+    texto_corrigida = ""  # ✅ Nome correto da variável
     
     for i in range(0, len(frases), 2):
         frase = frases[i].strip()
@@ -69,9 +69,9 @@ def corrigir_texto(texto):
                 palavra_corrigida = p_min.capitalize()
             frase_corrigida.append(palavra_corrigida)
         
-        texto_corrigido += " ".join(frase_corrigida) + pontuacao
+        texto_corrigida += " ".join(frase_corrigida) + pontuacao
     
-    return texto_corrigida
+    return texto_corrigida  # ✅ Retorna a variável correta
 
 
 # --- ABAS DO SISTEMA ---
