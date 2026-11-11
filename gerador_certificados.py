@@ -10,7 +10,7 @@ st.set_page_config(page_title="Sistema de Certificados — Coordenadores", layou
 MAX_TREINAMENTOS = 14
 
 # ==================================================
-# 🧠 FUNÇÕES AUXILIARES
+# 🧠 FUNÇÕES AUXILIARES — CORRIGIDAS
 # ==================================================
 def remover_acentos(texto):
     if not isinstance(texto, str):
@@ -18,9 +18,17 @@ def remover_acentos(texto):
     return unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode('ASCII').lower()
 
 def corrigir_texto(texto):
-    if not isinstance(texto, str) or texto.strip() == "":
-        return texto
+    # ✅ Proteção contra valores vazios ou inválidos
+    if not isinstance(texto, str):
+        try:
+            texto = str(texto)
+        except:
+            return ""
+    if texto.strip() == "" or texto.strip().upper() == "NAN":
+        return ""
+    
     texto = re.sub(r'\s+', ' ', texto).strip()
+    
     palavras_maiuscula = {
         "protocolo", "protocolos", "gestão", "qualidade", "saúde", "segurança",
         "higiene", "hospital", "unidade", "município", "estado", "brasil",
@@ -31,21 +39,26 @@ def corrigir_texto(texto):
         "resultado", "processo", "melhoria", "eficiência", "eficácia",
         "sistema", "norma", "regulamento", "diretriz", "política", "estratégia"
     }
+    
     palavras_minusculas = {
         "a", "o", "e", "de", "da", "do", "das", "dos", "em", "para", "com",
         "sem", "sob", "entre", "por", "pelo", "pela", "nos", "no", "na",
         "os", "as", "um", "uma", "como", "que", "se", "ou", "ao", "à",
         "aos", "às", "é", "e", "mas", "porém", "contudo", "então", "logo"
     }
+    
     frases = re.split(r'([.!?])', texto)
     texto_corrigido = ""
+    
     for i in range(0, len(frases), 2):
         frase = frases[i].strip()
         if not frase:
             continue
         pontuacao = frases[i+1] if i+1 < len(frases) else ""
+        
         palavras = frase.split()
         frase_corrigida = []
+        
         for idx, palavra in enumerate(palavras):
             p_min = palavra.lower()
             if idx == 0 or p_min in palavras_maiuscula:
@@ -55,7 +68,9 @@ def corrigir_texto(texto):
             else:
                 palavra_corrigida = p_min.capitalize()
             frase_corrigida.append(palavra_corrigida)
+        
         texto_corrigido += " ".join(frase_corrigida) + pontuacao
+    
     return texto_corrigida
 
 
@@ -85,19 +100,15 @@ with aba_certificados:
         df = pd.read_excel(arquivo_excel, sheet_name="CORDENADORES", engine="openpyxl")
         df.columns = df.columns.str.strip()
         
-        # ✅ Cada pessoa aparece UMA VEZ SÓ na lista
         todos_nomes = df["NOME"].dropna().unique()
         
-        # ✅ Verifica quem já tem pelo menos uma linha com STATUS = IMPRESSO
         if "STATUS" in df.columns:
             impressos_nomes = df[df["STATUS"].astype(str).str.strip().str.upper() == "IMPRESSO"]["NOME"].unique()
         else:
             impressos_nomes = []
         
-        # ✅ Ordenação alfabética correta
         nomes_ordenados = sorted(todos_nomes, key=remover_acentos)
         
-        # Filtro: mostrar só pendentes
         mostrar_so_pendentes = st.checkbox("👁️ Mostrar apenas pendentes", value=False)
         
         if mostrar_so_pendentes:
@@ -109,7 +120,6 @@ with aba_certificados:
         nome_escolhido = st.selectbox("👤 Selecione o nome do coordenador", nomes_filtrados, key="cert_nome")
 
         if nome_escolhido:
-            # ✅ Pega TODOS os treinamentos dessa pessoa
             dados_pessoa = df[df["NOME"] == nome_escolhido].reset_index(drop=True)
             contexto = {"NOME": nome_escolhido}
             
@@ -118,21 +128,33 @@ with aba_certificados:
             for i in range(MAX_TREINAMENTOS):
                 if i < len(dados_pessoa):
                     linha = dados_pessoa.iloc[i]
+                    
                     # Data
                     data_val = linha["DATA"]
-                    if hasattr(data_val, 'strftime'):
+                    if pd.isna(data_val):
+                        contexto[f"Data_{i+1}"] = ""
+                    elif hasattr(data_val, 'strftime'):
                         contexto[f"Data_{i+1}"] = data_val.strftime("%d/%m/%Y")
                     else:
                         contexto[f"Data_{i+1}"] = str(data_val)
-                    # Tema corrigido
-                    tema_bruto = str(linha["TEMA"])
-                    contexto[f"Tema_{i+1}"] = corrigir_texto(tema_bruto)
-                    # Carga horária
-                    ch_valor = float(linha["CH"])
-                    if ch_valor.is_integer():
-                        contexto[f"Ch_{i+1}"] = f"{int(ch_valor)}H"
+                    
+                    # ✅ TEMA com proteção
+                    tema_bruto = linha["TEMA"]
+                    if pd.isna(tema_bruto):
+                        contexto[f"Tema_{i+1}"] = ""
                     else:
-                        contexto[f"Ch_{i+1}"] = f"{ch_valor:.2f}H".rstrip('0').rstrip('.') + 'H'
+                        contexto[f"Tema_{i+1}"] = corrigir_texto(str(tema_bruto))
+                    
+                    # ✅ Carga horária com proteção
+                    ch_valor = linha["CH"]
+                    if pd.isna(ch_valor):
+                        contexto[f"Ch_{i+1}"] = ""
+                    else:
+                        ch_valor = float(ch_valor)
+                        if ch_valor.is_integer():
+                            contexto[f"Ch_{i+1}"] = f"{int(ch_valor)}H"
+                        else:
+                            contexto[f"Ch_{i+1}"] = f"{ch_valor:.2f}H".rstrip('0').rstrip('.') + 'H'
                 else:
                     contexto[f"Data_{i+1}"] = ""
                     contexto[f"Tema_{i+1}"] = ""
@@ -142,8 +164,11 @@ with aba_certificados:
             ch_total = 0.0
             for i in range(MAX_TREINAMENTOS):
                 ch_texto = contexto[f"Ch_{i+1}"]
-                if ch_texto:
-                    ch_total += float(ch_texto.replace("H", ""))
+                if ch_texto and ch_texto != "":
+                    try:
+                        ch_total += float(ch_texto.replace("H", ""))
+                    except:
+                        pass
             
             if ch_total.is_integer():
                 contexto["CARGA_TOTAL"] = f"{int(ch_total)}H"
@@ -157,7 +182,11 @@ with aba_certificados:
             
             with st.expander("📝 Ver lista de treinamentos"):
                 for i in range(len(dados_pessoa)):
-                    st.write(f"{i+1}. {contexto[f'Data_{i+1}']} — {contexto[f'Tema_{i+1}']} — {contexto[f'Ch_{i+1}']}")
+                    data = contexto[f'Data_{i+1}']
+                    tema = contexto[f'Tema_{i+1}']
+                    ch = contexto[f'Ch_{i+1}']
+                    if tema:
+                        st.write(f"{i+1}. {data} — {tema} — {ch}")
 
             st.subheader("📄 Modelo do certificado (.docx)")
             modelo = st.file_uploader("Escolha o modelo do certificado", type=["docx"], key="cert_modelo")
@@ -205,6 +234,8 @@ with aba_ranking:
         ranking.insert(0, "POSIÇÃO", range(1, len(ranking) + 1))
         
         def formatar_ch(valor):
+            if pd.isna(valor):
+                return "0H"
             if valor.is_integer():
                 return f"{int(valor)}H"
             else:
@@ -226,7 +257,7 @@ with aba_ranking:
             st.write(f"{emoji} **{linha['POSIÇÃO']}º Lugar:** {linha['NOME']} — {linha['QUANTIDADE_TREINAMENTOS']} treinamentos | {linha['CARGA_HORARIA_TOTAL']}")
 
 # ==================================================
-# ABA 3 — CONTROLE DE IMPRESSÃO com LEGENDA
+# ABA 3 — CONTROLE DE IMPRESSÃO
 # ==================================================
 with aba_controle:
     st.title("✅ Controle de Impressão de Certificados")
@@ -237,13 +268,11 @@ with aba_controle:
         df_ctrl = pd.read_excel(arquivo_ctrl, sheet_name="CORDENADORES", engine="openpyxl")
         df_ctrl.columns = df_ctrl.columns.str.strip()
         
-        # ✅ Lista de pessoas únicas
         resumo_pessoas = df_ctrl.groupby("NOME").agg(
             TREINAMENTOS=("NOME", "count"),
             CARGA_HORAS=("CH", "sum")
         ).reset_index()
         
-        # ✅ Define status com base na coluna STATUS da planilha
         if "STATUS" in df_ctrl.columns:
             impressos = df_ctrl[df_ctrl["STATUS"].astype(str).str.strip().str.upper() == "IMPRESSO"]["NOME"].unique()
             resumo_pessoas["STATUS"] = resumo_pessoas["NOME"].apply(
@@ -253,15 +282,12 @@ with aba_controle:
             resumo_pessoas["STATUS"] = "⬜ PENDENTE"
             impressos = []
         
-        # ✅ Ordenação alfabética correta
         resumo_pessoas = resumo_pessoas.sort_values(by="NOME", key=lambda x: x.apply(remover_acentos))
         
-        # ✅ Contadores automáticos
         total = len(resumo_pessoas)
         qtd_impressos = len(impressos)
         qtd_pendentes = total - qtd_impressos
         
-        # 📊 PAINEL DE CONTAGEM — bem visível!
         st.markdown("---")
         col1, col2, col3 = st.columns([1, 1, 1])
         with col1:
@@ -271,19 +297,22 @@ with aba_controle:
         with col3:
             st.metric(label="⬜ PENDENTES", value=f"{qtd_pendentes}")
         
-        # 📈 Barra de progresso visual
         if total > 0:
             porcentagem = int((qtd_impressos / total) * 100)
             st.progress(porcentagem / 100, text=f"Concluído: {porcentagem}% — {qtd_impressos} de {total}")
         
         st.markdown("---")
         
-        # Formata carga horária
-        resumo_pessoas["CARGA_HORAS"] = resumo_pessoas["CARGA_HORAS"].apply(
-            lambda x: f"{int(x)}H" if x.is_integer() else f"{x:.2f}H".rstrip('0').rstrip('.') + 'H'
-        )
+        def formatar_ch_ctrl(valor):
+            if pd.isna(valor):
+                return "0H"
+            if valor.is_integer():
+                return f"{int(valor)}H"
+            else:
+                return f"{valor:.2f}H".rstrip('0').rstrip('.') + 'H'
         
-        # ✅ Tabela completa
+        resumo_pessoas["CARGA_HORAS"] = resumo_pessoas["CARGA_HORAS"].apply(formatar_ch_ctrl)
+        
         st.subheader("📋 Lista de Participantes")
         st.dataframe(
             resumo_pessoas[["STATUS", "NOME", "TREINAMENTOS", "CARGA_HORAS"]],
@@ -291,7 +320,6 @@ with aba_controle:
             hide_index=True
         )
         
-        # 💡 Legenda e instruções
         st.info("""
         📖 **LEGENDA:**
         - ✅ **IMPRESSO** = Coluna STATUS preenchida com "IMPRESSO" na planilha
