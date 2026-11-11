@@ -10,8 +10,22 @@ st.set_page_config(page_title="Sistema de Certificados — Coordenadores", layou
 MAX_TREINAMENTOS = 14
 
 # ==================================================
-# 🧠 FUNÇÕES AUXILIARES
+# 🧠 FUNÇÕES AUXILIARES — CORRIGE VARIAÇÕES DE NOMES
 # ==================================================
+def normalizar_nome(texto):
+    """Transforma tudo em padrão único para detectar duplicatas mesmo com diferenças pequenas"""
+    if not isinstance(texto, str):
+        texto = str(texto)
+    # Remove acentos
+    texto = unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode('ASCII')
+    # Transforma em minúsculo
+    texto = texto.lower()
+    # Remove espaços extras no início e fim
+    texto = texto.strip()
+    # Substitui múltiplos espaços entre palavras por 1 só
+    texto = re.sub(r'\s+', ' ', texto)
+    return texto
+
 def remover_acentos(texto):
     if not isinstance(texto, str):
         texto = str(texto)
@@ -99,9 +113,19 @@ with aba_certificados:
         df = pd.read_excel(arquivo_excel, sheet_name="CORDENADORES", engine="openpyxl")
         df.columns = df.columns.str.strip()
         
-        # ✅ Verifica quem já tem pelo menos uma linha com STATUS = IMPRESSO
+        # ✅ Cria coluna temporária para detectar nomes iguais mesmo com diferenças de acento/espaço
+        df["NOME_NORMALIZADO"] = df["NOME"].apply(normalizar_nome)
+        
+        # ✅ Usa o PRIMEIRO nome que aparece como nome oficial (mantém a grafia que você usou primeiro)
+        mapa_nomes = df.drop_duplicates(subset=["NOME_NORMALIZADO"])[["NOME_NORMALIZADO", "NOME"]]
+        mapa_nomes = mapa_nomes.set_index("NOME_NORMALIZADO")["NOME"].to_dict()
+        
+        # ✅ Substitui todos pela forma oficial
+        df["NOME_CORRIGIDO"] = df["NOME_NORMALIZADO"].map(mapa_nomes)
+        
+        # ✅ Verifica quem já foi impresso
         if "STATUS" in df.columns:
-            status_por_nome = df.groupby("NOME")["STATUS"].apply(
+            status_por_nome = df.groupby("NOME_CORRIGIDO")["STATUS"].apply(
                 lambda x: any(str(val).strip().upper() == "IMPRESSO" for val in x.dropna())
             ).reset_index()
             status_por_nome.columns = ["NOME", "JA_IMPRESSO"]
@@ -109,8 +133,9 @@ with aba_certificados:
         else:
             impressos_nomes = []
         
-        # ✅ Lista sem duplicatas e ORDENADA corretamente
-        todos_nomes = sorted(df["NOME"].dropna().unique(), key=lambda x: remover_acentos(str(x)))
+        # ✅ Lista de nomes ÚNICOS e ordenados corretamente
+        todos_nomes_unicos = df["NOME_CORRIGIDO"].dropna().unique()
+        todos_nomes = sorted(todos_nomes_unicos, key=lambda x: remover_acentos(str(x)))
         
         mostrar_so_pendentes = st.checkbox("👁️ Mostrar apenas pendentes", value=False)
         
@@ -123,7 +148,7 @@ with aba_certificados:
         nome_escolhido = st.selectbox("👤 Selecione o nome do coordenador", nomes_filtrados, key="cert_nome")
 
         if nome_escolhido:
-            dados_pessoa = df[df["NOME"] == nome_escolhido].reset_index(drop=True)
+            dados_pessoa = df[df["NOME_CORRIGIDO"] == nome_escolhido].reset_index(drop=True)
             contexto = {"NOME": nome_escolhido}
             
             st.info(f"✅ {nome_escolhido} — {len(dados_pessoa)} treinamento(s) incluídos")
@@ -132,7 +157,6 @@ with aba_certificados:
                 if i < len(dados_pessoa):
                     linha = dados_pessoa.iloc[i]
                     
-                    # Data
                     data_val = linha["DATA"]
                     if pd.isna(data_val):
                         contexto[f"Data_{i+1}"] = ""
@@ -141,14 +165,12 @@ with aba_certificados:
                     else:
                         contexto[f"Data_{i+1}"] = str(data_val)
                     
-                    # TEMA com proteção
                     tema_bruto = linha["TEMA"]
                     if pd.isna(tema_bruto):
                         contexto[f"Tema_{i+1}"] = ""
                     else:
                         contexto[f"Tema_{i+1}"] = corrigir_texto(str(tema_bruto))
                     
-                    # Carga horária com proteção
                     ch_valor = linha["CH"]
                     if pd.isna(ch_valor):
                         contexto[f"Ch_{i+1}"] = ""
@@ -163,7 +185,6 @@ with aba_certificados:
                     contexto[f"Tema_{i+1}"] = ""
                     contexto[f"Ch_{i+1}"] = ""
             
-            # Cálculo carga total
             ch_total = 0.0
             for i in range(MAX_TREINAMENTOS):
                 ch_texto = contexto[f"Ch_{i+1}"]
@@ -224,10 +245,17 @@ with aba_ranking:
         df_rank = pd.read_excel(arquivo_ranking, sheet_name="CORDENADORES", engine="openpyxl")
         df_rank.columns = df_rank.columns.str.strip()
         
-        ranking = df_rank.groupby("NOME").agg(
-            QUANTIDADE_TREINAMENTOS=("NOME", "count"),
+        # ✅ Mesma normalização de nomes
+        df_rank["NOME_NORMALIZADO"] = df_rank["NOME"].apply(normalizar_nome)
+        mapa_nomes_rank = df_rank.drop_duplicates(subset=["NOME_NORMALIZADO"])[["NOME_NORMALIZADO", "NOME"]]
+        mapa_nomes_rank = mapa_nomes_rank.set_index("NOME_NORMALIZADO")["NOME"].to_dict()
+        df_rank["NOME_CORRIGIDO"] = df_rank["NOME_NORMALIZADO"].map(mapa_nomes_rank)
+        
+        ranking = df_rank.groupby("NOME_CORRIGIDO").agg(
+            QUANTIDADE_TREINAMENTOS=("NOME_CORRIGIDO", "count"),
             CARGA_HORARIA_TOTAL=("CH", "sum")
         ).reset_index()
+        ranking = ranking.rename(columns={"NOME_CORRIGIDO": "NOME"})
         
         ranking = ranking.sort_values(
             by=["QUANTIDADE_TREINAMENTOS", "CARGA_HORARIA_TOTAL"],
@@ -260,7 +288,7 @@ with aba_ranking:
             st.write(f"{emoji} **{linha['POSIÇÃO']}º Lugar:** {linha['NOME']} — {linha['QUANTIDADE_TREINAMENTOS']} treinamentos | {linha['CARGA_HORARIA_TOTAL']}")
 
 # ==================================================
-# ABA 3 — CONTROLE DE IMPRESSÃO — ORDEM ALFABÉTICA GARANTIDA
+# ABA 3 — CONTROLE DE IMPRESSÃO — DETECÇÃO INTELIGENTE DE DUPLICATAS
 # ==================================================
 with aba_controle:
     st.title("✅ Controle de Impressão de Certificados")
@@ -271,78 +299,29 @@ with aba_controle:
         df_ctrl = pd.read_excel(arquivo_ctrl, sheet_name="CORDENADORES", engine="openpyxl")
         df_ctrl.columns = df_ctrl.columns.str.strip()
         
-        # ✅ Agrupa por nome (1 pessoa = 1 linha só)
-        resumo_pessoas = df_ctrl.groupby("NOME").agg(
-            TREINAMENTOS=("NOME", "count"),
+        # ✅ Normaliza nomes para detectar duplicatas com diferenças de escrita
+        df_ctrl["NOME_NORMALIZADO"] = df_ctrl["NOME"].apply(normalizar_nome)
+        
+        # ✅ Usa a primeira grafia encontrada como oficial
+        mapa_nomes_ctrl = df_ctrl.drop_duplicates(subset=["NOME_NORMALIZADO"])[["NOME_NORMALIZADO", "NOME"]]
+        mapa_nomes_ctrl = mapa_nomes_ctrl.set_index("NOME_NORMALIZADO")["NOME"].to_dict()
+        df_ctrl["NOME_CORRIGIDO"] = df_ctrl["NOME_NORMALIZADO"].map(mapa_nomes_ctrl)
+        
+        # ✅ Agrupa pelo nome corrigido
+        resumo_pessoas = df_ctrl.groupby("NOME_CORRIGIDO").agg(
+            TREINAMENTOS=("NOME_CORRIGIDO", "count"),
             CARGA_HORAS=("CH", "sum")
         ).reset_index()
+        resumo_pessoas = resumo_pessoas.rename(columns={"NOME_CORRIGIDO": "NOME"})
         
-        # ✅ Define status: se QUALQUER linha tem IMPRESSO → é IMPRESSO
+        # ✅ Define status
         if "STATUS" in df_ctrl.columns:
-            status_por_nome = df_ctrl.groupby("NOME")["STATUS"].apply(
+            status_por_nome = df_ctrl.groupby("NOME_CORRIGIDO")["STATUS"].apply(
                 lambda x: any(str(val).strip().upper() == "IMPRESSO" for val in x.dropna())
             ).reset_index()
-            status_por_nome.columns = ["NOME", "JA_IMPRESSO"]
+            status_por_nome.columns = ["NOME_CORRIGIDO", "JA_IMPRESSO"]
             
-            resumo_pessoas = pd.merge(resumo_pessoas, status_por_nome, on="NOME", how="left")
+            resumo_pessoas = pd.merge(resumo_pessoas, status_por_nome, left_on="NOME", right_on="NOME_CORRIGIDO", how="left")
+            resumo_pessoas = resumo_pessoas.drop(columns=["NOME_CORRIGIDO"])
             
-            resumo_pessoas["STATUS"] = resumo_pessoas["JA_IMPRESSO"].apply(
-                lambda x: "✅ IMPRESSO" if x else "⬜ PENDENTE"
-            )
-            impressos = resumo_pessoas[resumo_pessoas["JA_IMPRESSO"] == True]["NOME"].unique()
-        else:
-            resumo_pessoas["STATUS"] = "⬜ PENDENTE"
-            impressos = []
-        
-        # ✅ ORDENAÇÃO ALFABÉTICA CORRIGIDA — com acentos funcionando
-        resumo_pessoas["NOME_ORDEM"] = resumo_pessoas["NOME"].apply(remover_acentos)
-        resumo_pessoas = resumo_pessoas.sort_values(by="NOME_ORDEM").drop(columns=["NOME_ORDEM", "JA_IMPRESSO"])
-        
-        total = len(resumo_pessoas)
-        qtd_impressos = len(impressos)
-        qtd_pendentes = total - qtd_impressos
-        
-        # 📊 Painel de contagem
-        st.markdown("---")
-        col1, col2, col3 = st.columns([1, 1, 1])
-        with col1:
-            st.metric(label="📋 TOTAL GERAL", value=f"{total}")
-        with col2:
-            st.metric(label="✅ IMPRESSOS", value=f"{qtd_impressos}")
-        with col3:
-            st.metric(label="⬜ PENDENTES", value=f"{qtd_pendentes}")
-        
-        if total > 0:
-            porcentagem = int((qtd_impressos / total) * 100)
-            st.progress(porcentagem / 100, text=f"Concluído: {porcentagem}% — {qtd_impressos} de {total}")
-        
-        st.markdown("---")
-        
-        def formatar_ch_ctrl(valor):
-            if pd.isna(valor):
-                return "0H"
-            if valor.is_integer():
-                return f"{int(valor)}H"
-            else:
-                return f"{valor:.2f}H".rstrip('0').rstrip('.') + 'H'
-        
-        resumo_pessoas["CARGA_HORAS"] = resumo_pessoas["CARGA_HORAS"].apply(formatar_ch_ctrl)
-        
-        # ✅ Tabela final — sem duplicatas e em ORDEM ALFABÉTICA
-        st.subheader("📋 Lista de Participantes")
-        st.dataframe(
-            resumo_pessoas[["STATUS", "NOME", "TREINAMENTOS", "CARGA_HORAS"]],
-            use_container_width=True,
-            hide_index=True
-        )
-        
-        st.info("""
-        📖 **LEGENDA:**
-        - ✅ **IMPRESSO** = Coloque "IMPRESSO" em UMA das linhas da pessoa na coluna STATUS
-        - ⬜ **PENDENTE** = Célula vazia na coluna STATUS
-        
-        📝 **Como usar:**
-        1. Na planilha → coloque **IMPRESSO** na coluna STATUS de quem já imprimiu
-        2. Salve o arquivo
-        3. Faça upload aqui → atualiza sozinho, sem duplicatas e sempre em ordem A→Z ✨
-        """)
+            resumo
