@@ -34,52 +34,8 @@ def corrigir_texto(texto):
             return ""
     if texto.strip() == "" or texto.strip().upper() == "NAN":
         return ""
-    
     texto = re.sub(r'\s+', ' ', texto).strip()
-    
-    palavras_maiuscula = {
-        "protocolo", "protocolos", "gestão", "qualidade", "saúde", "segurança",
-        "higiene", "hospital", "unidade", "município", "estado", "brasil",
-        "programa", "curso", "treinamento", "capacitação", "desenvolvimento",
-        "liderança", "coordenadoria", "secretaria", "prefeitura", "diretoria",
-        "comissão", "equipe", "serviço", "atenção", "assistência", "controle",
-        "avaliação", "planejamento", "organização", "acompanhamento", "análise",
-        "resultado", "processo", "melhoria", "eficiência", "eficácia",
-        "sistema", "norma", "regulamento", "diretriz", "política", "estratégia"
-    }
-    
-    palavras_minusculas = {
-        "a", "o", "e", "de", "da", "do", "das", "dos", "em", "para", "com",
-        "sem", "sob", "entre", "por", "pelo", "pela", "nos", "no", "na",
-        "os", "as", "um", "uma", "como", "que", "se", "ou", "ao", "à",
-        "aos", "às", "é", "e", "mas", "porém", "contudo", "então", "logo"
-    }
-    
-    frases = re.split(r'([.!?])', texto)
-    texto_corrigida = ""
-    
-    for i in range(0, len(frases), 2):
-        frase = frases[i].strip()
-        if not frase:
-            continue
-        pontuacao = frases[i+1] if i+1 < len(frases) else ""
-        
-        palavras = frase.split()
-        frase_corrigida = []
-        
-        for idx, palavra in enumerate(palavras):
-            p_min = palavra.lower()
-            if idx == 0 or p_min in palavras_maiuscula:
-                palavra_corrigida = p_min.capitalize()
-            elif p_min in palavras_minusculas:
-                palavra_corrigida = p_min
-            else:
-                palavra_corrigida = p_min.capitalize()
-            frase_corrigida.append(palavra_corrigida)
-        
-        texto_corrigida += " ".join(frase_corrigida) + pontuacao
-    
-    return texto_corrigida
+    return texto
 
 
 # --- ABAS DO SISTEMA ---
@@ -144,7 +100,6 @@ with aba_certificados:
             for i in range(MAX_TREINAMENTOS):
                 if i < len(dados_pessoa):
                     linha = dados_pessoa.iloc[i]
-                    
                     data_val = linha["DATA"]
                     if pd.isna(data_val):
                         contexto[f"Data_{i+1}"] = ""
@@ -206,11 +161,9 @@ with aba_certificados:
             if modelo:
                 doc = DocxTemplate(modelo)
                 doc.render(contexto)
-                
                 saida = io.BytesIO()
                 doc.save(saida)
                 saida.seek(0)
-                
                 st.success("✅ Certificado gerado com sucesso!")
                 st.download_button(
                     label="📥 Baixar Certificado",
@@ -256,8 +209,7 @@ with aba_ranking:
                 return "0H"
             if valor.is_integer():
                 return f"{int(valor)}H"
-            else:
-                return f"{valor:.2f}H".rstrip('0').rstrip('.') + 'H'
+            return f"{valor:.2f}H".rstrip('0').rstrip('.') + 'H'
         
         ranking["CARGA_HORARIA_TOTAL"] = ranking["CARGA_HORARIA_TOTAL"].apply(formatar_ch)
         
@@ -322,6 +274,15 @@ with aba_controle:
         resumo_pessoas["chave_ordem"] = resumo_pessoas["NOME"].apply(remover_acentos)
         resumo_pessoas = resumo_pessoas.sort_values(by="chave_ordem").drop(columns=["chave_ordem"])
         
+        def formatar_ch_ctrl(valor):
+            if pd.isna(valor):
+                return "0H"
+            if valor.is_integer():
+                return f"{int(valor)}H"
+            return f"{valor:.2f}H".rstrip('0').rstrip('.') + 'H'
+        
+        resumo_pessoas["CARGA_HORAS"] = resumo_pessoas["CARGA_HORAS"].apply(formatar_ch_ctrl)
+        
         total = len(resumo_pessoas)
         qtd_impressos = len(impressos)
         qtd_pendentes = total - qtd_impressos
@@ -340,6 +301,13 @@ with aba_controle:
             st.progress(porcentagem / 100, text=f"Concluído: {porcentagem}% — {qtd_impressos} de {total}")
         
         st.markdown("---")
+        st.dataframe(resumo_pessoas[["STATUS", "NOME", "TREINAMENTOS", "CARGA_HORAS"]], 
+                     use_container_width=True, hide_index=True)
         
-        def formatar_ch_ctrl(valor):
-            if pd.isna(val
+        st.info("""
+        📖 **Legenda:**
+        - ✅ IMPRESSO = Já foi emitido
+        - ⬜ PENDENTE = Ainda precisa ser emitido
+        
+        💡 O código agrupa nomes mesmo com pequenas diferenças de escrita!
+        """)
