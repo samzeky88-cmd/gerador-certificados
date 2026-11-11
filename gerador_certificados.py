@@ -342,3 +342,4 @@ with aba_controle:
         st.markdown("---")
         
         def formatar_ch_ctrl(valor):
+            if pd.isna(val
