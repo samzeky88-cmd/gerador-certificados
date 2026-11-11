@@ -10,7 +10,7 @@ st.set_page_config(page_title="Sistema de Certificados — Coordenadores", layou
 MAX_TREINAMENTOS = 14
 
 # ==================================================
-# 🧠 FUNÇÕES AUXILIARES — CORRIGIDAS
+# 🧠 FUNÇÕES AUXILIARES
 # ==================================================
 def remover_acentos(texto):
     if not isinstance(texto, str):
@@ -18,7 +18,6 @@ def remover_acentos(texto):
     return unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode('ASCII').lower()
 
 def corrigir_texto(texto):
-    # ✅ Proteção contra valores vazios ou inválidos
     if not isinstance(texto, str):
         try:
             texto = str(texto)
@@ -48,7 +47,7 @@ def corrigir_texto(texto):
     }
     
     frases = re.split(r'([.!?])', texto)
-    texto_corrigida = ""  # ✅ Nome correto da variável
+    texto_corrigida = ""
     
     for i in range(0, len(frases), 2):
         frase = frases[i].strip()
@@ -71,7 +70,7 @@ def corrigir_texto(texto):
         
         texto_corrigida += " ".join(frase_corrigida) + pontuacao
     
-    return texto_corrigida  # ✅ Retorna a variável correta
+    return texto_corrigida
 
 
 # --- ABAS DO SISTEMA ---
@@ -100,22 +99,26 @@ with aba_certificados:
         df = pd.read_excel(arquivo_excel, sheet_name="CORDENADORES", engine="openpyxl")
         df.columns = df.columns.str.strip()
         
-        todos_nomes = df["NOME"].dropna().unique()
-        
+        # ✅ Verifica quem já tem pelo menos uma linha com STATUS = IMPRESSO
         if "STATUS" in df.columns:
-            impressos_nomes = df[df["STATUS"].astype(str).str.strip().str.upper() == "IMPRESSO"]["NOME"].unique()
+            status_por_nome = df.groupby("NOME")["STATUS"].apply(
+                lambda x: any(str(val).strip().upper() == "IMPRESSO" for val in x.dropna())
+            ).reset_index()
+            status_por_nome.columns = ["NOME", "JA_IMPRESSO"]
+            impressos_nomes = status_por_nome[status_por_nome["JA_IMPRESSO"] == True]["NOME"].unique()
         else:
             impressos_nomes = []
         
-        nomes_ordenados = sorted(todos_nomes, key=remover_acentos)
+        # ✅ Lista sem duplicatas e ORDENADA corretamente
+        todos_nomes = sorted(df["NOME"].dropna().unique(), key=lambda x: remover_acentos(str(x)))
         
         mostrar_so_pendentes = st.checkbox("👁️ Mostrar apenas pendentes", value=False)
         
         if mostrar_so_pendentes:
-            nomes_filtrados = [n for n in nomes_ordenados if n not in impressos_nomes]
-            st.info(f"📋 {len(nomes_filtrados)} pendentes de {len(nomes_ordenados)} total")
+            nomes_filtrados = [n for n in todos_nomes if n not in impressos_nomes]
+            st.info(f"📋 {len(nomes_filtrados)} pendentes de {len(todos_nomes)} total")
         else:
-            nomes_filtrados = nomes_ordenados
+            nomes_filtrados = todos_nomes
         
         nome_escolhido = st.selectbox("👤 Selecione o nome do coordenador", nomes_filtrados, key="cert_nome")
 
@@ -138,14 +141,14 @@ with aba_certificados:
                     else:
                         contexto[f"Data_{i+1}"] = str(data_val)
                     
-                    # ✅ TEMA com proteção
+                    # TEMA com proteção
                     tema_bruto = linha["TEMA"]
                     if pd.isna(tema_bruto):
                         contexto[f"Tema_{i+1}"] = ""
                     else:
                         contexto[f"Tema_{i+1}"] = corrigir_texto(str(tema_bruto))
                     
-                    # ✅ Carga horária com proteção
+                    # Carga horária com proteção
                     ch_valor = linha["CH"]
                     if pd.isna(ch_valor):
                         contexto[f"Ch_{i+1}"] = ""
@@ -207,7 +210,7 @@ with aba_certificados:
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     key="cert_download"
                 )
-                st.info("💡 Após imprimir, coloque 'IMPRESSO' na coluna STATUS dessa pessoa na planilha e reenvie para atualizar!")
+                st.info("💡 Após imprimir, coloque 'IMPRESSO' em UMA das linhas dessa pessoa na coluna STATUS da planilha e reenvie!")
 
 # ==================================================
 # ABA 2 — RANKING
@@ -257,7 +260,7 @@ with aba_ranking:
             st.write(f"{emoji} **{linha['POSIÇÃO']}º Lugar:** {linha['NOME']} — {linha['QUANTIDADE_TREINAMENTOS']} treinamentos | {linha['CARGA_HORARIA_TOTAL']}")
 
 # ==================================================
-# ABA 3 — CONTROLE DE IMPRESSÃO
+# ABA 3 — CONTROLE DE IMPRESSÃO — ORDEM ALFABÉTICA GARANTIDA
 # ==================================================
 with aba_controle:
     st.title("✅ Controle de Impressão de Certificados")
@@ -268,26 +271,38 @@ with aba_controle:
         df_ctrl = pd.read_excel(arquivo_ctrl, sheet_name="CORDENADORES", engine="openpyxl")
         df_ctrl.columns = df_ctrl.columns.str.strip()
         
+        # ✅ Agrupa por nome (1 pessoa = 1 linha só)
         resumo_pessoas = df_ctrl.groupby("NOME").agg(
             TREINAMENTOS=("NOME", "count"),
             CARGA_HORAS=("CH", "sum")
         ).reset_index()
         
+        # ✅ Define status: se QUALQUER linha tem IMPRESSO → é IMPRESSO
         if "STATUS" in df_ctrl.columns:
-            impressos = df_ctrl[df_ctrl["STATUS"].astype(str).str.strip().str.upper() == "IMPRESSO"]["NOME"].unique()
-            resumo_pessoas["STATUS"] = resumo_pessoas["NOME"].apply(
-                lambda x: "✅ IMPRESSO" if x in impressos else "⬜ PENDENTE"
+            status_por_nome = df_ctrl.groupby("NOME")["STATUS"].apply(
+                lambda x: any(str(val).strip().upper() == "IMPRESSO" for val in x.dropna())
+            ).reset_index()
+            status_por_nome.columns = ["NOME", "JA_IMPRESSO"]
+            
+            resumo_pessoas = pd.merge(resumo_pessoas, status_por_nome, on="NOME", how="left")
+            
+            resumo_pessoas["STATUS"] = resumo_pessoas["JA_IMPRESSO"].apply(
+                lambda x: "✅ IMPRESSO" if x else "⬜ PENDENTE"
             )
+            impressos = resumo_pessoas[resumo_pessoas["JA_IMPRESSO"] == True]["NOME"].unique()
         else:
             resumo_pessoas["STATUS"] = "⬜ PENDENTE"
             impressos = []
         
-        resumo_pessoas = resumo_pessoas.sort_values(by="NOME", key=lambda x: x.apply(remover_acentos))
+        # ✅ ORDENAÇÃO ALFABÉTICA CORRIGIDA — com acentos funcionando
+        resumo_pessoas["NOME_ORDEM"] = resumo_pessoas["NOME"].apply(remover_acentos)
+        resumo_pessoas = resumo_pessoas.sort_values(by="NOME_ORDEM").drop(columns=["NOME_ORDEM", "JA_IMPRESSO"])
         
         total = len(resumo_pessoas)
         qtd_impressos = len(impressos)
         qtd_pendentes = total - qtd_impressos
         
+        # 📊 Painel de contagem
         st.markdown("---")
         col1, col2, col3 = st.columns([1, 1, 1])
         with col1:
@@ -313,6 +328,7 @@ with aba_controle:
         
         resumo_pessoas["CARGA_HORAS"] = resumo_pessoas["CARGA_HORAS"].apply(formatar_ch_ctrl)
         
+        # ✅ Tabela final — sem duplicatas e em ORDEM ALFABÉTICA
         st.subheader("📋 Lista de Participantes")
         st.dataframe(
             resumo_pessoas[["STATUS", "NOME", "TREINAMENTOS", "CARGA_HORAS"]],
@@ -322,11 +338,11 @@ with aba_controle:
         
         st.info("""
         📖 **LEGENDA:**
-        - ✅ **IMPRESSO** = Coluna STATUS preenchida com "IMPRESSO" na planilha
+        - ✅ **IMPRESSO** = Coloque "IMPRESSO" em UMA das linhas da pessoa na coluna STATUS
         - ⬜ **PENDENTE** = Célula vazia na coluna STATUS
         
-        📝 **Como atualizar:**
-        1. Na sua planilha → coloque **IMPRESSO** na coluna STATUS da pessoa que já imprimiu
+        📝 **Como usar:**
+        1. Na planilha → coloque **IMPRESSO** na coluna STATUS de quem já imprimiu
         2. Salve o arquivo
-        3. Faça upload novamente aqui no Streamlit → os números atualizam automaticamente! ✨
+        3. Faça upload aqui → atualiza sozinho, sem duplicatas e sempre em ordem A→Z ✨
         """)
