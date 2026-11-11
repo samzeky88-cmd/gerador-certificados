@@ -10,19 +10,14 @@ st.set_page_config(page_title="Sistema de Certificados — Coordenadores", layou
 MAX_TREINAMENTOS = 14
 
 # ==================================================
-# 🧠 FUNÇÕES AUXILIARES — CORRIGE VARIAÇÕES DE NOMES
+# 🧠 FUNÇÕES AUXILIARES
 # ==================================================
 def normalizar_nome(texto):
-    """Transforma tudo em padrão único para detectar duplicatas mesmo com diferenças pequenas"""
     if not isinstance(texto, str):
         texto = str(texto)
-    # Remove acentos
     texto = unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode('ASCII')
-    # Transforma em minúsculo
     texto = texto.lower()
-    # Remove espaços extras no início e fim
     texto = texto.strip()
-    # Substitui múltiplos espaços entre palavras por 1 só
     texto = re.sub(r'\s+', ' ', texto)
     return texto
 
@@ -113,17 +108,11 @@ with aba_certificados:
         df = pd.read_excel(arquivo_excel, sheet_name="CORDENADORES", engine="openpyxl")
         df.columns = df.columns.str.strip()
         
-        # ✅ Cria coluna temporária para detectar nomes iguais mesmo com diferenças de acento/espaço
         df["NOME_NORMALIZADO"] = df["NOME"].apply(normalizar_nome)
-        
-        # ✅ Usa o PRIMEIRO nome que aparece como nome oficial (mantém a grafia que você usou primeiro)
         mapa_nomes = df.drop_duplicates(subset=["NOME_NORMALIZADO"])[["NOME_NORMALIZADO", "NOME"]]
         mapa_nomes = mapa_nomes.set_index("NOME_NORMALIZADO")["NOME"].to_dict()
-        
-        # ✅ Substitui todos pela forma oficial
         df["NOME_CORRIGIDO"] = df["NOME_NORMALIZADO"].map(mapa_nomes)
         
-        # ✅ Verifica quem já foi impresso
         if "STATUS" in df.columns:
             status_por_nome = df.groupby("NOME_CORRIGIDO")["STATUS"].apply(
                 lambda x: any(str(val).strip().upper() == "IMPRESSO" for val in x.dropna())
@@ -133,7 +122,6 @@ with aba_certificados:
         else:
             impressos_nomes = []
         
-        # ✅ Lista de nomes ÚNICOS e ordenados corretamente
         todos_nomes_unicos = df["NOME_CORRIGIDO"].dropna().unique()
         todos_nomes = sorted(todos_nomes_unicos, key=lambda x: remover_acentos(str(x)))
         
@@ -245,7 +233,6 @@ with aba_ranking:
         df_rank = pd.read_excel(arquivo_ranking, sheet_name="CORDENADORES", engine="openpyxl")
         df_rank.columns = df_rank.columns.str.strip()
         
-        # ✅ Mesma normalização de nomes
         df_rank["NOME_NORMALIZADO"] = df_rank["NOME"].apply(normalizar_nome)
         mapa_nomes_rank = df_rank.drop_duplicates(subset=["NOME_NORMALIZADO"])[["NOME_NORMALIZADO", "NOME"]]
         mapa_nomes_rank = mapa_nomes_rank.set_index("NOME_NORMALIZADO")["NOME"].to_dict()
@@ -288,7 +275,7 @@ with aba_ranking:
             st.write(f"{emoji} **{linha['POSIÇÃO']}º Lugar:** {linha['NOME']} — {linha['QUANTIDADE_TREINAMENTOS']} treinamentos | {linha['CARGA_HORARIA_TOTAL']}")
 
 # ==================================================
-# ABA 3 — CONTROLE DE IMPRESSÃO — DETECÇÃO INTELIGENTE DE DUPLICATAS
+# ABA 3 — CONTROLE DE IMPRESSÃO
 # ==================================================
 with aba_controle:
     st.title("✅ Controle de Impressão de Certificados")
@@ -299,29 +286,59 @@ with aba_controle:
         df_ctrl = pd.read_excel(arquivo_ctrl, sheet_name="CORDENADORES", engine="openpyxl")
         df_ctrl.columns = df_ctrl.columns.str.strip()
         
-        # ✅ Normaliza nomes para detectar duplicatas com diferenças de escrita
         df_ctrl["NOME_NORMALIZADO"] = df_ctrl["NOME"].apply(normalizar_nome)
-        
-        # ✅ Usa a primeira grafia encontrada como oficial
         mapa_nomes_ctrl = df_ctrl.drop_duplicates(subset=["NOME_NORMALIZADO"])[["NOME_NORMALIZADO", "NOME"]]
         mapa_nomes_ctrl = mapa_nomes_ctrl.set_index("NOME_NORMALIZADO")["NOME"].to_dict()
         df_ctrl["NOME_CORRIGIDO"] = df_ctrl["NOME_NORMALIZADO"].map(mapa_nomes_ctrl)
         
-        # ✅ Agrupa pelo nome corrigido
         resumo_pessoas = df_ctrl.groupby("NOME_CORRIGIDO").agg(
             TREINAMENTOS=("NOME_CORRIGIDO", "count"),
             CARGA_HORAS=("CH", "sum")
         ).reset_index()
         resumo_pessoas = resumo_pessoas.rename(columns={"NOME_CORRIGIDO": "NOME"})
         
-        # ✅ Define status
         if "STATUS" in df_ctrl.columns:
             status_por_nome = df_ctrl.groupby("NOME_CORRIGIDO")["STATUS"].apply(
                 lambda x: any(str(val).strip().upper() == "IMPRESSO" for val in x.dropna())
             ).reset_index()
             status_por_nome.columns = ["NOME_CORRIGIDO", "JA_IMPRESSO"]
             
-            resumo_pessoas = pd.merge(resumo_pessoas, status_por_nome, left_on="NOME", right_on="NOME_CORRIGIDO", how="left")
-            resumo_pessoas = resumo_pessoas.drop(columns=["NOME_CORRIGIDO"])
-            
-            resumo
+            resumo_pessoas = pd.merge(
+                resumo_pessoas, 
+                status_por_nome, 
+                left_on="NOME", 
+                right_on="NOME_CORRIGIDO", 
+                how="left"
+            )
+            resumo_pessoas["STATUS"] = resumo_pessoas["JA_IMPRESSO"].apply(
+                lambda x: "✅ IMPRESSO" if x else "⬜ PENDENTE"
+            )
+            resumo_pessoas = resumo_pessoas.drop(columns=["NOME_CORRIGIDO", "JA_IMPRESSO"])
+            impressos = resumo_pessoas[resumo_pessoas["STATUS"] == "✅ IMPRESSO"]["NOME"].unique()
+        else:
+            resumo_pessoas["STATUS"] = "⬜ PENDENTE"
+            impressos = []
+        
+        resumo_pessoas["chave_ordem"] = resumo_pessoas["NOME"].apply(remover_acentos)
+        resumo_pessoas = resumo_pessoas.sort_values(by="chave_ordem").drop(columns=["chave_ordem"])
+        
+        total = len(resumo_pessoas)
+        qtd_impressos = len(impressos)
+        qtd_pendentes = total - qtd_impressos
+        
+        st.markdown("---")
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col1:
+            st.metric(label="📋 TOTAL GERAL", value=f"{total}")
+        with col2:
+            st.metric(label="✅ IMPRESSOS", value=f"{qtd_impressos}")
+        with col3:
+            st.metric(label="⬜ PENDENTES", value=f"{qtd_pendentes}")
+        
+        if total > 0:
+            porcentagem = int((qtd_impressos / total) * 100)
+            st.progress(porcentagem / 100, text=f"Concluído: {porcentagem}% — {qtd_impressos} de {total}")
+        
+        st.markdown("---")
+        
+        def formatar_ch_ctrl(valor):
